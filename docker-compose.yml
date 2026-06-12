@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     ports:
       - "5001:5001"   # API
-      - "8088:8080"   # Gateway (host 8088 — 8080 is taken by freqtrade)
+      - "8080:8080"   #Gateway
     environment:
       - IPFS_PROFILE=server
       - IPFS_TELEMETRY=off
