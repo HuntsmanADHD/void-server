@@ -103,9 +103,9 @@ class AnthropicProvider extends BaseProvider {
     return {
       success: true,
       models: [
-        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', description: 'Balanced performance' },
-        { id: 'claude-haiku-4-20250514', name: 'Claude Haiku 4', description: 'Fast and efficient' },
-        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4', description: 'Most capable' }
+        { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', description: 'Balanced performance' },
+        { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', description: 'Fast and efficient' },
+        { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', description: 'Most capable' }
       ],
       configured: Object.entries(this.config.models || {}).map(([type, model]) => ({
         type,

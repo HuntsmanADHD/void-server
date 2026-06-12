@@ -94,7 +94,7 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/message', async (req, res) => {
   const { content, providerOverride, modelType, maxHistory, debug, useMemory } = req.body;
 
-  if (!content) {
+  if (typeof content !== 'string' || !content.trim()) {
     return res.status(400).json({ success: false, error: 'Message content required' });
   }
 

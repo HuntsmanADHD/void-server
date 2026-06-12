@@ -1,6 +1,6 @@
 {
   "enabled": true,
-  "gateway": "http://localhost:8080/ipfs",
+  "gateway": "http://localhost:8088/ipfs",
   "apiUrl": "http://localhost:5001",
   "publicGateway": "https://gateway.pinata.cloud/ipfs",
   "pinata": {

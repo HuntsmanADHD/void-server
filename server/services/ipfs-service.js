@@ -20,7 +20,7 @@ const TEMPLATE_PATH = path.resolve(__dirname, '../../data_template/ipfs.json');
 // Default configuration
 const DEFAULT_CONFIG = {
   enabled: true,
-  gateway: 'http://localhost:8080/ipfs',
+  gateway: 'http://localhost:8088/ipfs',
   apiUrl: process.env.IPFS_API_URL || 'http://localhost:5001',
   publicGateway: 'https://gateway.pinata.cloud/ipfs',
   pinata: {
@@ -77,7 +77,7 @@ async function initialize() {
       needsSave = true;
     }
     if (config.gateway && !config.gateway.includes('localhost') && !config.gateway.includes('127.0.0.1') && !config.gateway.includes('pinata')) {
-      config.gateway = 'http://localhost:8080/ipfs';
+      config.gateway = 'http://localhost:8088/ipfs';
       needsSave = true;
     }
 

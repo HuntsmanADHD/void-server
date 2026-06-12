@@ -127,6 +127,68 @@ async function executePrompt(templateId, variableValues = {}, options = {}) {
 }
 
 /**
+ * Normalize structured history into a valid chat-completion messages array:
+ * drops empty turns, merges consecutive same-role messages, and ensures the
+ * conversation starts with a user turn (the Anthropic API rejects otherwise).
+ */
+function buildChatMessages(history) {
+  const messages = [];
+
+  for (const msg of history) {
+    const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+    if (!content) continue;
+
+    const role = msg.role === 'user' ? 'user' : 'assistant';
+    const last = messages[messages.length - 1];
+
+    if (last && last.role === role) {
+      last.content += `\n\n${content}`;
+    } else {
+      messages.push({ role, content });
+    }
+  }
+
+  // The history window may open on an assistant turn, but the API requires
+  // the first message to be 'user'. Fold it into the following user turn as
+  // quoted context instead of discarding it. (Merging above guarantees at
+  // most one leading assistant turn.)
+  if (messages.length > 0 && messages[0].role === 'assistant') {
+    const orphan = messages.shift();
+    if (messages.length > 0) {
+      messages[0].content =
+        `[Earlier in this conversation, the assistant said:]\n${orphan.content}\n\n${messages[0].content}`;
+    }
+  }
+
+  return messages;
+}
+
+/**
+ * Marker substituted for {{userMessage}} when rendering a template to derive
+ * the system prompt. Everything from the line containing it onward is the
+ * transcript scaffold ("User: ...\nClawed:") and gets cut, regardless of how
+ * the template names its speakers.
+ */
+const SCAFFOLD_SENTINEL = '\u0000VOID_SCAFFOLD_SPLIT\u0000';
+
+/**
+ * Cut the transcript scaffold from a template rendered with the sentinel as
+ * the user message, leaving only the system portion (persona/context/memory).
+ */
+function stripTranscriptScaffold(prompt) {
+  const idx = prompt.indexOf(SCAFFOLD_SENTINEL);
+  if (idx === -1) {
+    // Template doesn't interpolate {{userMessage}} — nothing to strip, but
+    // flag it since chat templates are expected to reference it
+    console.log('⚠️ Chat template has no {{userMessage}} placeholder; using full render as system prompt');
+    return prompt.trim();
+  }
+
+  const lineStart = prompt.lastIndexOf('\n', idx);
+  return prompt.slice(0, lineStart === -1 ? 0 : lineStart).trim();
+}
+
+/**
  * Execute a chat message within a chat session
  */
 async function executeChat(chatId, userMessage, options = {}) {
@@ -151,8 +213,15 @@ async function executeChat(chatId, userMessage, options = {}) {
     content: userMessage
   });
 
-  // Get chat history for context
+  // Get chat history for context (formatted strings, used by the plaintext
+  // template for CLI providers and turn logging)
   const chatHistory = chatService.getChatHistory(chatId, options.maxHistory || 20);
+
+  // Structured history for chat-completion APIs (Anthropic/OpenAI/Gemini).
+  // Ends with the user message we just added, so it is the full turn list.
+  const structuredMessages = buildChatMessages(
+    chatService.getChatMessages(chatId, options.maxHistory || 20)
+  );
 
   // Query relevant memories if Neo4j is available and memory is enabled
   let memoryContext = '';
@@ -198,6 +267,29 @@ async function executeChat(chatId, userMessage, options = {}) {
     return buildResult;
   }
 
+  // Render the template without the transcript to get the system prompt
+  // (persona + system context + memory). The transcript itself is sent as a
+  // structured messages array so the API enforces turn boundaries instead of
+  // the model completing a plaintext document.
+  const systemBuild = promptService.buildPrompt(chat.templateId, {
+    ...variableValues,
+    chatHistory: [],
+    userMessage: SCAFFOLD_SENTINEL
+  });
+  const systemPrompt = systemBuild.success
+    ? stripTranscriptScaffold(systemBuild.prompt)
+    : '';
+
+  // Only use the structured form when it's a valid conversation for the API:
+  // non-empty and ending on the user turn we just added (a whitespace-only
+  // message would be dropped by buildChatMessages, leaving a trailing
+  // assistant turn, which the API rejects as a prefill). messages and
+  // systemPrompt travel together — sending the system prompt alongside the
+  // plaintext-document fallback would duplicate the persona.
+  const useStructured =
+    structuredMessages.length > 0 &&
+    structuredMessages[structuredMessages.length - 1].role === 'user';
+
   // Resolve provider for logging
   const { key: resolvedProviderKey } = resolveProvider(template, { providerOverride });
 
@@ -206,6 +298,8 @@ async function executeChat(chatId, userMessage, options = {}) {
     timestamp: new Date().toISOString(),
     userMessage,
     compiledPrompt: buildResult.prompt,
+    systemPrompt,
+    structuredMessageCount: structuredMessages.length,
     templateId: chat.templateId,
     provider: resolvedProviderKey,
     modelType: options.modelType || 'medium',
@@ -214,10 +308,21 @@ async function executeChat(chatId, userMessage, options = {}) {
     memoriesRetrieved: relevantMemories.length
   });
 
-  // Execute the prompt
+  // Execute the prompt. API providers use the structured messages array and
+  // system prompt; CLI providers ignore them and fall back to the compiled
+  // plaintext prompt.
   const result = await executePrompt(chat.templateId, variableValues, {
     ...options,
-    providerOverride
+    providerOverride,
+    generationOptions: {
+      ...options.generationOptions,
+      // Copy so providers that mutate the array (openai unshifts a system
+      // message) don't pollute the version kept for debug/logging
+      ...(useStructured && {
+        messages: structuredMessages.map(m => ({ ...m })),
+        ...(systemPrompt && { systemPrompt })
+      })
+    }
   });
 
   if (!result.success) {
@@ -235,6 +340,8 @@ async function executeChat(chatId, userMessage, options = {}) {
   // Build debug info if requested
   const debugInfo = options.debug ? {
     compiledPrompt: buildResult.prompt,
+    systemPrompt: systemPrompt || null,
+    structuredMessages,
     memoryContext: memoryContext || null,
     memoriesRetrieved: relevantMemories.map(m => ({
       content: m.content,

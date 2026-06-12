@@ -792,6 +792,25 @@ function getChatHistory(chatId, maxMessages = 20, branchId = null) {
 }
 
 /**
+ * Get chat history as structured messages for chat-completion APIs (branch-aware)
+ * Returns array of { role: 'user'|'assistant', content } in chronological order
+ */
+function getChatMessages(chatId, maxMessages = 20, branchId = null) {
+  const chat = getChat(chatId);
+  if (!chat) {
+    return [];
+  }
+
+  const targetBranchId = branchId || chat.activeBranchId;
+  const branchMessages = getBranchMessages(chat, targetBranchId);
+
+  return branchMessages.slice(-maxMessages).map(msg => ({
+    role: msg.role === 'user' ? 'user' : 'assistant',
+    content: msg.content
+  }));
+}
+
+/**
  * Export chat to different formats (branch-aware)
  */
 function exportChat(chatId, format = 'json', branchId = null) {
@@ -1005,6 +1024,7 @@ module.exports = {
   getMessages,
   clearMessages,
   getChatHistory,
+  getChatMessages,
   exportChat,
   // Branch management
   createBranch,

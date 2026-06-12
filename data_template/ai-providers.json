@@ -29,9 +29,9 @@
       "description": "Call Anthropic's Claude models directly via the API.",
       "link": "https://docs.anthropic.com/en/api",
       "models": {
-        "light": "claude-haiku-4-20250514",
-        "medium": "claude-sonnet-4-20250514",
-        "deep": "claude-opus-4-20250514"
+        "light": "claude-haiku-4-5",
+        "medium": "claude-sonnet-4-6",
+        "deep": "claude-opus-4-8"
       },
       "settings": {
         "temperature": 0.7,
